@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  asyncLambda
+
+  Sample SAM Template for asyncLambda
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 20
+    MemorySize: 512
+
+    Tracing: Active
+    # You can add LoggingConfig parameters such as the Logformat, Log Group, and SystemLogLevel or ApplicationLogLevel. Learn more here https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html#sam-function-loggingconfig.
+    LoggingConfig:
+      LogFormat: JSON
+  Api:
+    TracingEnabled: true
+Resources:
+  PatientCheckoutDLQ:
+    Type: AWS::SNS::Topic
+  PatientCheckoutBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: 'patieuckett'
+  PatientCheckoutTopic:
+    Type: AWS::SNS::Topic
+  PatientChecoutFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: patientcheckout
+      Handler: com.pramod.aws.lambda.s3sns.api.PatientCheckoutEventFromS3::handler
+      Runtime: java17
+      Architectures:
+      - x86_64
+      MemorySize: 512
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref PatientCheckoutDLQ
+      Policies:
+        - S3ReadPolicy:
+            BucketName: 'patieuckett'
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt PatientCheckoutTopic.TopicName
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          PATIENT_CHECKOUT_TOPIC: !Ref PatientCheckoutTopic
+      Events:
+        S3BucketEvent:
+          Type: S3 # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Bucket: !Ref PatientCheckoutBucket
+            Events: s3:ObjectCreated:*
+  BillManagementFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: patientcheckout
+      Handler: com.pramod.aws.lambda.s3sns.api.BillManagementLambda::handler
+      Runtime: java17
+      Architectures:
+        - x86_64
+      MemorySize: 512
+      Events:
+        SNSEvent:
+          Type: SNS # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Topic: !Ref PatientCheckoutTopic
+  ErrorHandlingFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: patientcheckout
+      Handler: com.pramod.aws.lambda.s3sns.errorhandling.ErrorHandler::handler
+      Runtime: java17
+      Architectures:
+        - x86_64
+      MemorySize: 512
+      Events:
+        SNSEventDLQ:
+          Type: SNS # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Topic: !Ref PatientCheckoutDLQ
+
